@@ -9,7 +9,7 @@ concurrency: aggiorna-dati
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -20,6 +20,12 @@ jobs:
         with:
           path: work/istat
           key: istat-v1
+      - name: Cache strade OSM (si accumula di notte in notte)
+        uses: actions/cache@v4
+        with:
+          path: work/strade_db.json
+          key: strade-${{ github.run_id }}
+          restore-keys: strade-
       - run: pip install pyshp shapely pyproj
       - run: bash build.sh
       - name: Pubblica su GitHub Pages (branch gh-pages)

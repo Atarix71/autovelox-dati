@@ -3,3 +3,6 @@ out/
 __pycache__/
 .DS_Store
 .venv/
+*.bak
+strade_cache/
+strade_db.json

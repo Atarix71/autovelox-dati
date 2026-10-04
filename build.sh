@@ -7,6 +7,7 @@ mkdir -p work out
 cp allegato_b.json work/
 cd work
 $PY ../scarica_osm.py
+$PY ../strade.py || echo "ATTENZIONE: strade non disponibili, proseguo senza asse stradale"
 $PY ../scarica_mit.py | grep -E "righe ricevute|dispositivi:|campi" || true
 test -s mit_registro.json
 $PY ../classifica.py 2>&1 | grep -v "Possible issue" | grep -E "decreti|postazioni|stato post|velox.db"

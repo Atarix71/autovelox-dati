@@ -136,6 +136,8 @@ def main():
     for c in cams:
         c["_comune"], c["_cat"] = trova_comune(tree, geoms, info, proj, c["lon"], c["lat"])
     osm_per_comune = collections.Counter(c["_cat"] for c in cams)
+    strade = json.load(open("strade.json")) if pathlib.Path("strade.json").exists() else {}
+    log("asse stradale disponibile per:", sum("asse" in v for v in strade.values()), "postazioni")
     righe, dist = [], collections.Counter()
     for c in cams:
         t, cat = c.get("tags", {}), c["_cat"]
@@ -161,8 +163,12 @@ def main():
         else:
             stato, aff = "misto", "bassa"
         dist[(stato, aff)] += 1
+        st = strade.get(str(c["id"]), {})
+        direzione = t.get("direction") or (str(st["dir_rel"]) if st.get("dir_rel") is not None else None)
         righe.append({"id": c["id"], "lat": c["lat"], "lon": c["lon"],
-                      "maxspeed": t.get("maxspeed"), "direction": t.get("direction"),
+                      "maxspeed": t.get("maxspeed"), "direction": direzione,
+                      "strada_dir": ";".join(str(x) for x in st.get("asse", [])) or None,
+                      "strada_tipo": st.get("tipo"), "strada_nome": st.get("nome"),
                       "comune": c["_comune"], "cod_catastale": cat, "stato": stato, "affidabilita": aff,
                       "dettaglio": {"fonte": fonte, "stati_comune": dict(stati),
                                     "dispositivi": [{k: d[k] for k in ("marca", "modello", "decreto", "stato", "ente")} for d in fissi[:6]]}})
@@ -175,12 +181,14 @@ def main():
     db = pathlib.Path("velox.db"); db.unlink(missing_ok=True)
     con = sqlite3.connect(db)
     con.executescript("""CREATE TABLE postazioni(id INTEGER PRIMARY KEY, lat REAL, lon REAL, maxspeed TEXT,
-        direction TEXT, comune TEXT, cod_catastale TEXT, stato TEXT, affidabilita TEXT, dettaglio TEXT);
+        direction TEXT, comune TEXT, cod_catastale TEXT, stato TEXT, affidabilita TEXT, dettaglio TEXT,
+        strada_dir TEXT, strada_tipo TEXT, strada_nome TEXT);
         CREATE INDEX ix_latlon ON postazioni(lat, lon);
         CREATE TABLE meta(k TEXT PRIMARY KEY, v TEXT);""")
-    con.executemany("INSERT INTO postazioni VALUES(?,?,?,?,?,?,?,?,?,?)",
+    con.executemany("INSERT INTO postazioni VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [(r["id"], r["lat"], r["lon"], r["maxspeed"], r["direction"], r["comune"], r["cod_catastale"],
-          r["stato"], r["affidabilita"], json.dumps(r["dettaglio"], ensure_ascii=False)) for r in righe])
+          r["stato"], r["affidabilita"], json.dumps(r["dettaglio"], ensure_ascii=False),
+          r["strada_dir"], r["strada_tipo"], r["strada_nome"]) for r in righe])
     ver = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H%M")
     con.executemany("INSERT INTO meta VALUES(?,?)", [("versione", ver),
         ("fonti", "OpenStreetMap contributors (ODbL); MIT velox.mit.gov.it; DM 8/6/2026 n.125 All. B; ISTAT")])
