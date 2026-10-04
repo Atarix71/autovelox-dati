@@ -6,3 +6,8 @@ __pycache__/
 *.bak
 strade_cache/
 strade_db.json
+*.pbf
+*.part
+*.opl
+*.geojsonseq
+riquadri.geojson
