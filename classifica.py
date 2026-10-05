@@ -184,11 +184,26 @@ def main():
         direction TEXT, comune TEXT, cod_catastale TEXT, stato TEXT, affidabilita TEXT, dettaglio TEXT,
         strada_dir TEXT, strada_tipo TEXT, strada_nome TEXT);
         CREATE INDEX ix_latlon ON postazioni(lat, lon);
+        CREATE TABLE dispositivi(matricola TEXT, matricola_norm TEXT, marca TEXT, modello TEXT, versione TEXT, tipo TEXT,
+            n_decreto TEXT, data_decreto TEXT, note TEXT, ente TEXT, cod_catastale TEXT, stato TEXT, motivo TEXT);
+        CREATE INDEX ix_matr ON dispositivi(matricola_norm);
         CREATE TABLE meta(k TEXT PRIMARY KEY, v TEXT);""")
     con.executemany("INSERT INTO postazioni VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [(r["id"], r["lat"], r["lon"], r["maxspeed"], r["direction"], r["comune"], r["cod_catastale"],
           r["stato"], r["affidabilita"], json.dumps(r["dettaglio"], ensure_ascii=False),
           r["strada_dir"], r["strada_tipo"], r["strada_nome"]) for r in righe])
+    # registro MIT completo (per il ricorso: si cerca la matricola indicata sul verbale)
+    disp_rows = []
+    for r in reg:
+        st, why = stato_dispositivo(r, allB)
+        m = html.unescape(str(r.get("matricola_dispositivo") or "")).strip()
+        disp_rows.append((m, re.sub(r"[^A-Z0-9]", "", m.upper()), r.get("marca_dispositivo"), r.get("modello_dispositivo"),
+                          r.get("versione_dispositivo"), html.unescape(str(r.get("tipo_dispositivo") or "")),
+                          str(r.get("n_decreto") or ""), str(r.get("data_decreto") or ""), html.unescape(str(r.get("note") or "")),
+                          html.unescape(str(r.get("denominazione_accertatore") or "")),
+                          str(r.get("codice_catastale_accertatore") or "").strip().upper(), st, why))
+    con.executemany("INSERT INTO dispositivi VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)", disp_rows)
+    log("registro dispositivi nel db:", len(disp_rows))
     ver = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H%M")
     con.executemany("INSERT INTO meta VALUES(?,?)", [("versione", ver),
         ("fonti", "OpenStreetMap contributors (ODbL); MIT velox.mit.gov.it; DM 8/6/2026 n.125 All. B; ISTAT")])

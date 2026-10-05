@@ -16,6 +16,6 @@ else
 fi
 $PY ../scarica_mit.py | grep -E "righe ricevute|dispositivi:|campi" || true
 test -s mit_registro.json
-$PY ../classifica.py 2>&1 | grep -v "Possible issue" | grep -E "decreti|postazioni|stato post|velox.db"
+$PY ../classifica.py 2>&1 | grep -v "Possible issue" | grep -E "decreti|postazioni|stato post|registro dispositivi|velox.db"
 $PY ../pubblica.py
 cp ../sito/*.html ../out/
