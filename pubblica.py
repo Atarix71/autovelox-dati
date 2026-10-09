@@ -15,10 +15,13 @@ if n < MIN_POSTAZIONI or reg < MIN_REGISTRO:
 out = pathlib.Path("../out"); out.mkdir(exist_ok=True)
 shutil.copy(db, out / "velox.db")
 raw = (out / "velox.db").read_bytes()
+import gzip
+gz = gzip.compress(raw, 9, mtime=0)
+(out / "velox.db.gz").write_bytes(gz)
 man = {"schema": 1, "versione": ver, "file": "velox.db", "bytes": len(raw),
-       "sha256": hashlib.sha256(raw).hexdigest(), "postazioni": n, "registro_mit": reg, "stati": stati,
+       "sha256": hashlib.sha256(raw).hexdigest(), "file_gz": "velox.db.gz", "bytes_gz": len(gz), "postazioni": n, "registro_mit": reg, "stati": stati,
        "generato": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
        "fonti": "OpenStreetMap contributors (ODbL); MIT velox.mit.gov.it; DM 8/6/2026 n.125 All. B; ISTAT"}
 (out / "manifest.json").write_text(json.dumps(man, ensure_ascii=False, indent=1))
 (out / ".nojekyll").write_text("")
-print("pubblicazione pronta:", man["versione"], man["sha256"][:12])
+print("pubblicazione pronta:", man["versione"], man["sha256"][:12], f"db {len(raw) >> 10} KB, compresso {len(gz) >> 10} KB")

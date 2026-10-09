@@ -204,10 +204,27 @@ def main():
                           str(r.get("codice_catastale_accertatore") or "").strip().upper(), st, why))
     con.executemany("INSERT INTO dispositivi VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)", disp_rows)
     log("registro dispositivi nel db:", len(disp_rows))
+    # corridoi di avvicinamento (strade che portano all'autovelox nel verso di marcia), se calcolati
+    cor = json.load(open("corridoi.json")) if pathlib.Path("corridoi.json").exists() else {}
+    con.execute("CREATE TABLE corridoi(id INTEGER PRIMARY KEY, punti BLOB)")
+    ids = {r["id"] for r in righe}
+    import corridoi as _cor   # formato binario compatto (circa 4 volte più piccolo del testo)
+    con.executemany("INSERT INTO corridoi VALUES(?,?)", [(int(k), _cor.codifica(v)) for k, v in cor.items() if int(k) in ids])
+    log("corridoi nel db:", sum(1 for k in cor if int(k) in ids))
+    tut = json.load(open("tutor.json")) if pathlib.Path("tutor.json").exists() else []
+    con.execute("CREATE TABLE tutor(id INTEGER PRIMARY KEY, nome TEXT, limite INTEGER, lunghezza REAL, punti BLOB)")
+    con.executemany("INSERT INTO tutor VALUES(?,?,?,?,?)", [(t["id"], t["nome"], t["limite"], t["lunghezza"], _cor.codifica(t["punti"])) for t in tut])
+    log("tratte tutor nel db:", len(tut))
+    con.execute("CREATE TABLE limiti(cella INTEGER PRIMARY KEY, dati BLOB)")
+    if pathlib.Path("limiti.sqlite").exists():
+        con.execute("ATTACH DATABASE 'limiti.sqlite' AS l")
+        con.execute("INSERT INTO limiti SELECT * FROM l.limiti")
+        con.commit(); con.execute("DETACH DATABASE l")
+    log("celle limiti di velocità nel db:", con.execute("select count(*) from limiti").fetchone()[0])
     ver = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H%M")
     con.executemany("INSERT INTO meta VALUES(?,?)", [("versione", ver),
         ("fonti", "OpenStreetMap contributors (ODbL); MIT velox.mit.gov.it; DM 8/6/2026 n.125 All. B; ISTAT")])
-    con.commit(); con.close()
+    con.commit(); con.execute("VACUUM"); con.close()
     log(f"velox.db scritto ({db.stat().st_size // 1024} KB), versione {ver}")
     pathlib.Path("classifica_report.txt").write_text("\n".join(rep))
 

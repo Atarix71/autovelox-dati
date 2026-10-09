@@ -9,6 +9,9 @@ PBF = pathlib.Path(os.environ.get("ITALY_PBF", "italy-latest.osm.pbf"))
 CLASSI = ("motorway,trunk,primary,secondary,tertiary,unclassified,residential,living_street,service,road,"
           "motorway_link,trunk_link,primary_link,secondary_link,tertiary_link")
 BOX_LAT, BOX_LON = 0.0004, 0.0006   # ~45 m attorno a ogni autovelox
+G_LAT, G_LON = 0.022, 0.031         # ~2,4 km: rete stradale per i corridoi
+CLASSI_GRAFO = ("motorway,trunk,primary,secondary,tertiary,unclassified,residential,road,"
+                "motorway_link,trunk_link,primary_link,secondary_link,tertiary_link")
 
 def sh(*cmd):
     t = time.time()
@@ -73,6 +76,28 @@ def leggi_strade(path):
                      "geometry": [{"lat": c[1], "lon": c[0]} for c in g["coordinates"]]})
     return ways
 
+def riquadri(cams, dlat, dlon, C):
+    """Riquadri attorno agli autovelox come rettangoli NON sovrapposti: in un MultiPolygon osmium le zone
+    coperte da due riquadri risulterebbero "fuori" (regola pari/dispari). Celle di una griglia fissa, unite per righe."""
+    import math
+    celle = set()
+    for c in cams:
+        for i in range(math.floor((c["lat"] - dlat) / C), math.floor((c["lat"] + dlat) / C) + 1):
+            for j in range(math.floor((c["lon"] - dlon) / C), math.floor((c["lon"] + dlon) / C) + 1):
+                celle.add((i, j))
+    righe = {}
+    for i, j in celle: righe.setdefault(i, []).append(j)
+    poli = []
+    for i, js in righe.items():
+        js.sort(); k = 0
+        while k < len(js):
+            h = k
+            while h + 1 < len(js) and js[h + 1] == js[h] + 1: h += 1
+            la0, la1, lo0, lo1 = i * C, (i + 1) * C, js[k] * C, (js[h] + 1) * C
+            poli.append([[[lo0, la0], [lo1, la0], [lo1, la1], [lo0, la1], [lo0, la0]]])
+            k = h + 1
+    return poli
+
 def main():
     import strade
     scarica_pbf()
@@ -88,9 +113,7 @@ def main():
     print(f"nodi speed_camera: {len(cams)}  con direction: {sum('direction' in c.get('tags', {}) for c in cams)}  relazioni: {len(rel)}")
     if len(cams) < 4000: sys.exit("troppo pochi autovelox: estratto incompleto?")
     # 2) strade vicine: estratto con un riquadro di ~45 m per autovelox, poi solo le highway utili
-    poli = [[[[c["lon"] - BOX_LON, c["lat"] - BOX_LAT], [c["lon"] + BOX_LON, c["lat"] - BOX_LAT],
-              [c["lon"] + BOX_LON, c["lat"] + BOX_LAT], [c["lon"] - BOX_LON, c["lat"] + BOX_LAT],
-              [c["lon"] - BOX_LON, c["lat"] - BOX_LAT]]] for c in cams]
+    poli = riquadri(cams, BOX_LAT, BOX_LON, 0.0002)
     pathlib.Path("riquadri.geojson").write_text(json.dumps(
         {"type": "Feature", "properties": {}, "geometry": {"type": "MultiPolygon", "coordinates": poli}}))
     sh("osmium", "extract", "-p", "riquadri.geojson", "-s", "complete_ways", str(PBF), "-O", "-o", "vicino.osm.pbf")
@@ -102,6 +125,28 @@ def main():
     print(f"strade: {len(ways)} | autovelox con asse stradale: {sum('asse' in v for v in res.values())}/{len(cams)} | "
           f"senso unico: {sum(len(v.get('asse', [])) == 1 for v in res.values())} | "
           f"direzione da relazione: {sum(v['dir_rel'] is not None for v in res.values())}")
+    # 3) rete stradale nei 2,3 km attorno a ogni autovelox, per i corridoi di avvicinamento
+    punti_grafo = list(cams)
+    nodi_rel = {e["id"]: e for e in osm if e["type"] == "node"}
+    for r in rel:
+        if r["tags"].get("enforcement") != "average_speed": continue
+        m = {x.get("role"): nodi_rel.get(x["ref"]) for x in r["members"] if x["type"] == "node"}
+        a, b = m.get("from"), m.get("to")
+        if not a or not b: continue
+        n = max(1, int(((a["lat"] - b["lat"]) ** 2 + (a["lon"] - b["lon"]) ** 2) ** 0.5 / 0.018))
+        punti_grafo += [{"lat": a["lat"] + (b["lat"] - a["lat"]) * k / n, "lon": a["lon"] + (b["lon"] - a["lon"]) * k / n} for k in range(n + 1)]
+    poli = riquadri(punti_grafo, G_LAT, G_LON, 0.01)
+    print(f"  area rete stradale: {len(poli)} rettangoli", flush=True)
+    pathlib.Path("riquadri_grafo.geojson").write_text(json.dumps(
+        {"type": "Feature", "properties": {}, "geometry": {"type": "MultiPolygon", "coordinates": poli}}))
+    sh("osmium", "extract", "-p", "riquadri_grafo.geojson", "-s", "complete_ways", str(PBF), "-O", "-o", "dintorni.osm.pbf")
+    sh("osmium", "tags-filter", "dintorni.osm.pbf", "w/highway=" + CLASSI_GRAFO, "-O", "-o", "grafo.osm.pbf")
+    sh("osmium", "export", "grafo.osm.pbf", "-f", "geojsonseq", "--geometry-types=linestring", "-O", "-o", "grafo.geojsonseq")
+    import corridoi
+    corridoi.main()
+    # 4) limiti di velocità di tutte le strade (per il limite in tempo reale)
+    import limiti
+    limiti.main(PBF)
 
 if __name__ == "__main__":
     sys.path.insert(0, str(pathlib.Path(__file__).parent))
