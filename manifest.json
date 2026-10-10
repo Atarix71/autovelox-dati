@@ -1,0 +1,20 @@
+{
+ "schema": 1,
+ "versione": "202610100846",
+ "file": "velox.db",
+ "bytes": 18419712,
+ "sha256": "fed14794c59952ed225eeb4da63bac7251be9008de4e455fe5fb631ae2f5c901",
+ "file_gz": "velox.db.gz",
+ "bytes_gz": 10830907,
+ "postazioni": 5184,
+ "registro_mit": 4148,
+ "stati": {
+  "approvato": 1265,
+  "misto": 913,
+  "non_censito": 853,
+  "omologato": 2139,
+  "omologato_dichiarato": 14
+ },
+ "generato": "2026-10-10T08:46:09+00:00",
+ "fonti": "OpenStreetMap contributors (ODbL); MIT velox.mit.gov.it; DM 8/6/2026 n.125 All. B; ISTAT"
+}
